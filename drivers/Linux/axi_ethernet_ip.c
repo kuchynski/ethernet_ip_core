@@ -29,6 +29,8 @@ struct axi_info {
 
 	unsigned char *buf_virt_tx;
 	unsigned char *buf_virt_rx;
+	dma_addr_t buf_physical;
+	size_t buf_size;
 
 	struct completion compl;
 	u32 rxqueue_out_index, rxqueue_in_index;
@@ -49,14 +51,14 @@ size_t ip_core_receive_frame(struct axi_info *ip_core_data, unsigned char *buf)
 {
 	//aa RX 2.1 check if some frame was awaliable last time
 	if (ip_core_data->rxqueue_out_index == ip_core_data->rxqueue_in_index) {
-		ip_core_data->rxqueue_in_index = ioread32(ip_core_data->io_virtual + SHIFT_RX_INDEX);
+//		ip_core_data->rxqueue_in_index = ioread32(ip_core_data->io_virtual + SHIFT_RX_INDEX);
 
 	//aa RX 2.2 if not, check if the frame has been received since then
 		if (ip_core_data->rxqueue_out_index == ip_core_data->rxqueue_in_index) {
 	//aa RX 2.3 if still not, wait for the frame
-			iowrite32(1, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
+//			iowrite32(1, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
 			wait_for_completion_timeout(&ip_core_data->compl, HZ);
-			ip_core_data->rxqueue_in_index = ioread32(ip_core_data->io_virtual + SHIFT_RX_INDEX);
+//			ip_core_data->rxqueue_in_index = ioread32(ip_core_data->io_virtual + SHIFT_RX_INDEX);
 		}
 	}
 
@@ -70,7 +72,7 @@ size_t ip_core_receive_frame(struct axi_info *ip_core_data, unsigned char *buf)
 		memcpy(buf, ptr + offset_data, size);
 	//aa RX 2.5 free the entry in the RX ring
 		ip_core_data->rxqueue_out_index = (ip_core_data->rxqueue_out_index + 1) % QUEUE_CAPACITY_ENTRIES;
-		iowrite32(ip_core_data->rxqueue_out_index, ip_core_data->io_virtual + SHIFT_RX_INDEX);
+//		iowrite32(ip_core_data->rxqueue_out_index, ip_core_data->io_virtual + SHIFT_RX_INDEX);
 
 		return size;
 	}
@@ -83,8 +85,8 @@ int ip_core_send_frame(struct axi_info *ip_core_data, unsigned char *data, const
 	const u32 next_in_index = (ip_core_data->txqueue_in_index + 1) % QUEUE_CAPACITY_ENTRIES;
 
 	//aa TX 1.1 check free entries into the TX ring
-	if (ip_core_data->txqueue_out_index == next_in_index)
-		ip_core_data->txqueue_out_index = ioread32(ip_core_data->io_virtual + SHIFT_TX_INDEX);
+//	if (ip_core_data->txqueue_out_index == next_in_index)
+//			ip_core_data->txqueue_out_index = ioread32(ip_core_data->io_virtual + SHIFT_TX_INDEX);
 
 	if (ip_core_data->txqueue_out_index != next_in_index) {
 	//aa TX 1.2 copy the frame to the TX ring
@@ -93,7 +95,17 @@ int ip_core_send_frame(struct axi_info *ip_core_data, unsigned char *data, const
 
 	//aa TX 1.3 inform about it IP core
 		ip_core_data->txqueue_in_index = next_in_index;
-		iowrite32((len << 16) | ip_core_data->txqueue_in_index << 16, ip_core_data->io_virtual + SHIFT_TX_INDEX);
+//		iowrite32((len << 16) | ip_core_data->txqueue_in_index << 16, ip_core_data->io_virtual + SHIFT_TX_INDEX);
+		// loopback implementation, it shoud be removed later
+		{
+			u8 *ptr_loopback = ip_core_data->buf_virt_rx + (ip_core_data->rxqueue_in_index << QUEUE_ONE_ENTRY_SHIFT);
+			const size_t offset_size = QUEUE_ONE_ENTRY_SIZE_BYTES - 2 * sizeof(u64);
+			const size_t offset_data = (offset_size - len) & ~0xF;
+			memcpy(ptr_loopback + offset_data, ptr, len);
+			*(size_t*)(ptr_loopback + offset_size) = len;
+			ip_core_data->rxqueue_in_index = (ip_core_data->rxqueue_in_index + 1) % QUEUE_CAPACITY_ENTRIES;
+			complete(&ip_core_data->compl);
+		}
 
 		return 0;
 	}
@@ -101,7 +113,7 @@ int ip_core_send_frame(struct axi_info *ip_core_data, unsigned char *data, const
 	return -EBUSY;
 }
 
-int ip_core_init(const struct device *dev, struct axi_info **pip_core_data)
+int ip_core_init(struct device *dev, struct axi_info **pip_core_data)
 {
 	int ret = -ENOMEM;
 	struct axi_info *ip_core_data = (struct axi_info*)vmalloc(sizeof(struct axi_info));
@@ -111,64 +123,64 @@ int ip_core_init(const struct device *dev, struct axi_info **pip_core_data)
 
 	//aa init 2.1 map IP core address space
 		ip_core_data->io_physical = AXI_MEMORY_ADDRESS;
-		if(NULL == request_mem_region(ip_core_data->io_physical, AXI_MEMORY_SIZE_BYTES, NETDEV_NAME)) {
-			dev_err(dev, "failed to request memory region 0x%lx\n", ip_core_data->io_physical);
-		} else {
-			ip_core_data->io_virtual = ioremap(ip_core_data->io_physical, AXI_MEMORY_SIZE_BYTES);
-			if(ip_core_data->io_virtual == NULL) {
-				dev_err(dev, "failed to ioremap memory region 0x%lx\n", ip_core_data->io_physical);
-			} else {
+//		if(NULL == request_mem_region(ip_core_data->io_physical, AXI_MEMORY_SIZE_BYTES, NETDEV_NAME)) 
+		{
+//			dev_err(dev, "failed to request memory region 0x%lx\n", ip_core_data->io_physical);
+//		} else {
+//			ip_core_data->io_virtual = ioremap(ip_core_data->io_physical, AXI_MEMORY_SIZE_BYTES);
+//			if(ip_core_data->io_virtual == NULL) {
+//				dev_err(dev, "failed to ioremap memory region 0x%lx\n", ip_core_data->io_physical);
+//			} else 
+{
 	//aa init 2.2 allocate memory for the frame queues
-				const size_t buf_size = QUEUE_CAPACITY_ENTRIES * QUEUE_ONE_ENTRY_SIZE_BYTES;
-
-				ip_core_data->buf_virt_tx = kmalloc(buf_size * 2, GFP_KERNEL);
+				ip_core_data->buf_size = QUEUE_CAPACITY_ENTRIES * QUEUE_ONE_ENTRY_SIZE_BYTES * 2;
+				ip_core_data->buf_virt_tx = dma_alloc_coherent(dev, ip_core_data->buf_size, &ip_core_data->buf_physical, GFP_KERNEL);
 				if (ip_core_data->buf_virt_tx == NULL) {
-					dev_err(dev, "failed to allocate memory\n");
+					dev_err(dev, "failed to allocate dma memory\n");
 				} else {
-					dma_addr_t buf_physical = dma_map_single(0, ip_core_data->buf_virt_tx, QUEUE_ONE_ENTRY_SIZE_BYTES, DMA_TO_DEVICE);
-					ip_core_data->buf_virt_rx = ip_core_data->buf_virt_tx + buf_size;
+					ip_core_data->buf_virt_rx = ip_core_data->buf_virt_tx + QUEUE_CAPACITY_ENTRIES;
 
 	//aa init 2.3 request IRQ line
 					init_completion(&ip_core_data->compl);
 					ip_core_data->irq_no = IRQ_NO;
-					ret = request_irq(ip_core_data->irq_no, ip_core_interrupt, 0, NETDEV_NAME, ip_core_data);
-					if(ret) {
-						dev_err(dev, "failed to request interrupt #%d\n", ip_core_data->irq_no);
-						ip_core_data->irq_no = 0;
-					} else {
+					ret = 0;
+//					ret = request_irq(ip_core_data->irq_no, ip_core_interrupt, 0, NETDEV_NAME, ip_core_data);
+//					if(ret) {
+//						dev_err(dev, "failed to request interrupt #%d\n", ip_core_data->irq_no);
+//						ip_core_data->irq_no = 0;
+//					} else {
 						*pip_core_data = ip_core_data;
-						disable_irq_nosync(ip_core_data->irq_no);
+//						disable_irq_nosync(ip_core_data->irq_no);
 
 	//aa init 2.4 initialize IP core itself
-						iowrite32(0, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
-						iowrite32(QUEUE_CAPACITY_ENTRIES, ip_core_data->io_virtual + SHIFT_QUEUE_CAPACITY);
-						iowrite32(buf_physical, ip_core_data->io_virtual + SHIFT_QUEUE_ADDRESS);
-					}
+//						iowrite32(0, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
+//						iowrite32(QUEUE_CAPACITY_ENTRIES, ip_core_data->io_virtual + SHIFT_QUEUE_CAPACITY);
+//						iowrite32(buf_physical, ip_core_data->io_virtual + SHIFT_QUEUE_ADDRESS);
+//					}
 				}
 			}
 		}
 	}
 
 	if (ret)
-		ip_core_exit(ip_core_data);
+		ip_core_exit(dev, ip_core_data);
 
 	return ret;
 }
 
-void ip_core_exit(struct axi_info *ip_core_data)
+void ip_core_exit(struct device *dev, struct axi_info *ip_core_data)
 {
 	if (ip_core_data) {
 		if (ip_core_data->irq_no > 0)
 			free_irq(ip_core_data->irq_no, ip_core_data);
 		if (ip_core_data->io_virtual) {
-			iowrite32(0, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
-			iowrite32(0, ip_core_data->io_virtual + SHIFT_QUEUE_ADDRESS);
-			iowrite32(0, ip_core_data->io_virtual + SHIFT_QUEUE_CAPACITY);
+//			iowrite32(0, ip_core_data->io_virtual + SHIFT_IRQ_MASK);
+//			iowrite32(0, ip_core_data->io_virtual + SHIFT_QUEUE_ADDRESS);
+//			iowrite32(0, ip_core_data->io_virtual + SHIFT_QUEUE_CAPACITY);
 			release_mem_region(ip_core_data->io_physical, AXI_MEMORY_SIZE_BYTES);
-			kfree(ip_core_data->io_virtual);
 		}
 		if (ip_core_data->buf_virt_tx)
-			kfree(ip_core_data->buf_virt_tx);
+			dma_free_coherent(dev, ip_core_data->buf_size, ip_core_data->buf_virt_tx, ip_core_data->buf_physical);
 		vfree(ip_core_data);
 	}
 }

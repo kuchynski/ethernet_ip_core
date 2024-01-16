@@ -84,7 +84,6 @@ int netdev_open(struct net_device *netdev)
 		dev_err(&netdev->dev, "failed to init ethernet ip core: %d\n", ret);
 	} else {
 	//aa init 3. start RX thread
-		memset(adapter, 0x0, sizeof(struct network_driver_info));
 		adapter->exit = false;
 		adapter->rx_task = kthread_run(rx_thread, netdev, "ethip_rx");
 
@@ -105,7 +104,7 @@ int netdev_close(struct net_device *netdev)
 
 	adapter->exit = true;
 	kthread_stop(adapter->rx_task); 
-	ip_core_exit(adapter->ip_core_data);
+	ip_core_exit(&netdev->dev, adapter->ip_core_data);
 
 	return 0;
 }
@@ -131,7 +130,7 @@ static int netdev_init(void)
 	struct net_device *netdev = alloc_netdev_mqs(sizeof(struct network_driver_info), NETDEV_NAME, NET_NAME_UNKNOWN, ether_setup, 1, 1);
 	int ret = -ENOMEM;
 
-	if (netdev) 
+	if (netdev == NULL)
 		pr_err("failed to allocate net device\n");
 	else {
 		netdev->netdev_ops = &netdev_ops;
@@ -141,8 +140,10 @@ static int netdev_init(void)
 		if (ret) {
 			pr_err("failed to register net device\n");
 			free_netdev(netdev);
+		} else {
+			memset(netdev_priv(netdev), 0x0, sizeof(struct network_driver_info));
+			ethip_netdev = netdev;
 		}
-		ethip_netdev = netdev;
 	}
 
 	return ret;

@@ -1,5 +1,6 @@
 # linux kernel location
-KDIR:=~/projects/linux/kernel/linux
+#KDIR:=~/projects/linux/kernel/linux
+KDIR:=/usr/src/linux-headers-5.10.103-v7l+
 
 # toolchain location
 #CROSS_TOP_DIR:=/home/andrei/opt/toolchains/arm-xilinx-linux-gnueabi
@@ -14,4 +15,5 @@ default:
 	$(MAKE) -C $(KDIR) ARCH=arm M=$(shell pwd) modules
 
 #clean:
-	@rm -f *.o *.order *.mod *.symvers .*.*.cmd
+	@rm -f *.o *.order *.mod *.mod.c *.symvers .*.*.cmd
+
