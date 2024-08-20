@@ -116,7 +116,7 @@ int ip_core_send_frame(struct axi_info *ip_core_data, unsigned char *data, const
 int ip_core_init(struct device *dev, struct axi_info **pip_core_data)
 {
 	int ret = -ENOMEM;
-	struct axi_info *ip_core_data = (struct axi_info*)vmalloc(sizeof(struct axi_info));
+	struct axi_info *ip_core_data = (struct axi_info*)vzalloc(sizeof(struct axi_info));
 
 	if (ip_core_data) {
 		memset(ip_core_data, 0, sizeof(struct axi_info)); 
@@ -134,6 +134,9 @@ int ip_core_init(struct device *dev, struct axi_info **pip_core_data)
 {
 	//aa init 2.2 allocate memory for the frame queues
 				ip_core_data->buf_size = QUEUE_CAPACITY_ENTRIES * QUEUE_ONE_ENTRY_SIZE_BYTES * 2;
+				u64 dma_mask = DMA_BIT_MASK(32);
+				dev->dma_mask = &dma_mask;
+				dma_set_mask_and_coherent(dev, dma_mask);
 				ip_core_data->buf_virt_tx = dma_alloc_coherent(dev, ip_core_data->buf_size, &ip_core_data->buf_physical, GFP_KERNEL);
 				if (ip_core_data->buf_virt_tx == NULL) {
 					dev_err(dev, "failed to allocate dma memory\n");
@@ -142,7 +145,7 @@ int ip_core_init(struct device *dev, struct axi_info **pip_core_data)
 
 	//aa init 2.3 request IRQ line
 					init_completion(&ip_core_data->compl);
-					ip_core_data->irq_no = IRQ_NO;
+//					ip_core_data->irq_no = IRQ_NO;
 					ret = 0;
 //					ret = request_irq(ip_core_data->irq_no, ip_core_interrupt, 0, NETDEV_NAME, ip_core_data);
 //					if(ret) {

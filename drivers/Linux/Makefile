@@ -1,6 +1,6 @@
 # linux kernel location
 #KDIR:=~/projects/linux/kernel/linux
-KDIR:=/usr/src/linux-headers-5.10.103-v7l+
+KDIR:=/usr/src/linux-headers-6.1.0-23-amd64/
 
 # toolchain location
 #CROSS_TOP_DIR:=/home/andrei/opt/toolchains/arm-xilinx-linux-gnueabi
